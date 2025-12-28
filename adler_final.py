@@ -1,120 +1,112 @@
 import streamlit as st
-st.set_page_config(page_title="Adler Audit", page_icon="🦅", layout="centered")
 from fpdf import FPDF
-from datetime import datetime
 import smtplib
-from email.message import EmailMessage
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from streamlit_drawable_canvas import st_canvas
-import io
+import datetime
 
-# --- PDF KLASSE ---
-class AuditPDF(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 16)
-        self.cell(0, 10, '🦅 ADLER AUTOMOTIVE QUALITY', 0, 1, 'L')
-        self.set_font('Arial', 'I', 10)
-        self.cell(0, 5, 'Professional Vehicle Logistics Auditing - VDI 2700 compliant', 0, 1, 'L')
-        self.ln(10)
+# 1. Seiteneinstellungen für das iPhone (Emoji als Icon)
+st.set_page_config(page_title="Adler Audit", page_icon="🦅", layout="centered")
 
-    def chapter_title(self, title):
-        self.set_font('Arial', 'B', 12)
-        self.set_fill_color(240, 240, 240)
-        self.cell(0, 10, title, 0, 1, 'L', 1)
-        self.ln(4)
+# 2. Sicherheit: Passwort aus den Streamlit Secrets laden
+# (Stelle sicher, dass du 'mein_web_passwort' in den Streamlit Settings hinterlegt hast!)
+try:
+    ABSENDER_PASSWORT = st.secrets["mein_web_passwort"]
+except:
+    ABSENDER_PASSWORT = "PASSWORT_NICHT_GEFUNDEN"
 
-    def audit_line(self, label, value):
-        self.set_font('Arial', 'B', 10)
-        self.cell(60, 8, f"{label}:", 0, 0)
-        self.set_font('Arial', '', 10)
-        self.cell(0, 8, str(value), 0, 1)
+# Konfiguration des E-Mail-Versands
+ABSENDER_EMAIL = "t.adler.1991@web.de"
+EMPFAENGER_EMAIL = "t.adler.1991@web.de"
+SMTP_SERVER = "smtp.web.de"
+SMTP_PORT = 587
 
-# --- MAIL FUNKTION ---
-def sende_mail_mit_pdf(pdf_content, status_urteil, objekt_name):
-    absender = "t.adler.1991@web.de"
-    passwort = "mein_web_passwort" # <--- BITTE EINTRAGEN
+def send_email(file_path, subject):
+    msg = MIMEMultipart()
+    msg['From'] = ABSENDER_EMAIL
+    msg['To'] = EMPFAENGER_EMAIL
+    msg['Subject'] = subject
     
-    msg = EmailMessage()
-    msg['Subject'] = f"Audit-Bericht: {status_urteil} - {objekt_name}"
-    msg['From'] = absender
-    msg['To'] = absender
-    msg.set_content(f"Hallo Tobias,\n\nanbei der neue Audit-Bericht für {objekt_name}.\nStatus: {status_urteil}")
+    body = "Anbei erhalten Sie das ausgefüllte LKW-Audit-Protokoll der Firma Adler."
+    msg.attach(MIMEText(body, 'plain'))
     
-    msg.add_attachment(pdf_content, maintype='application', subtype='pdf', filename=f"Audit_{objekt_name}.pdf")
+    with open(file_path, "rb") as attachment:
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f"attachment; filename= {file_path}")
+        msg.attach(part)
     
-    with smtplib.SMTP("smtp.web.de", 587) as server:
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
-        server.login(absender, passwort)
+        server.login(ABSENDER_EMAIL, ABSENDER_PASSWORT)
         server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"Fehler beim Versand: {e}")
+        return False
 
-# --- STREAMLIT UI ---
-st.title("🦅 Adler Audit-Portal")
+# UI der App
+st.title("🦅 Adler LKW-Audit")
+st.write("Bitte füllen Sie die Checkliste für die Abfahrtskontrolle aus.")
 
-# Stammdaten
-st.subheader("📋 Stammdaten")
-c1, c2 = st.columns(2)
-auftraggeber = c1.text_input("Auftraggeber", "ARS Altmann AG")
-sub = c1.text_input("Subunternehmer")
-lkw_kz = c2.text_input("Kennzeichen")
-fahrer = c2.text_input("Fahrer Name")
+with st.form("audit_form"):
+    datum = st.date_input("Datum", datetime.date.today())
+    kennzeichen = st.text_input("LKW Kennzeichen")
+    fahrer = st.text_input("Name des Fahrers")
+    
+    st.subheader("Checkliste")
+    licht = st.checkbox("Beleuchtung (OK)")
+    reifen = st.checkbox("Reifen & Luftdruck (OK)")
+    bremsen = st.checkbox("Bremsanlage (OK)")
+    ladungs = st.checkbox("Ladungssicherung (OK)")
+    
+    bemerkung = st.text_area("Bemerkungen / Mängel")
+    
+    st.subheader("Unterschrift")
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 255, 255, 1)",
+        stroke_width=2,
+        stroke_color="#000000",
+        background_color="#eeeeee",
+        height=150,
+        key="canvas",
+    )
+    
+    submit = st.form_submit_button("Audit abschließen & PDF senden")
 
-# Technik & Lasi
-st.divider()
-st.subheader("🚛 LKW Technik & LaSi")
-col_tech1, col_tech2 = st.columns(2)
-vdi_m = col_tech1.radio("VDI Konform (Motorwagen)?", ["Ja", "Nein"])
-vdi_a = col_tech2.radio("VDI Konform (Anhänger)?", ["Ja", "Nein"])
-keile = st.number_input("Defekte Keile", 0)
-gurte = st.number_input("Defekte Gurte", 0)
-
-# Foto & Unterschrift
-st.divider()
-st.subheader("📸 Dokumentation & Unterschrift")
-foto = st.camera_input("Mängelfoto aufnehmen")
-
-st.write("Unterschrift Fahrer/Auditor:")
-canvas_result = st_canvas(
-    fill_color="rgba(255, 255, 255, 0.3)",
-    stroke_width=2,
-    stroke_color="#000",
-    background_color="#eee",
-    height=150,
-    key="canvas",
-)
-
-# Abschluss
-st.divider()
-urteil = st.selectbox("Gesamturteil", ["✅ POSITIV", "❌ NEGATIV"])
-bemerkung = st.text_area("Schlussbemerkung")
-
-if st.button("Audit finalisieren & Senden"):
-    with st.spinner('Bericht wird erstellt...'):
-        # PDF Daten sammeln
-        daten = {
-            'auftraggeber': auftraggeber, 'subunternehmer': sub,
-            'kennzeichen': lkw_kz, 'fahrer': fahrer,
-            'h_m': "VDI OK" if vdi_m=="Ja" else "VDI Mangel",
-            'h_a': "VDI OK" if vdi_a=="Ja" else "VDI Mangel",
-            'keile': keile, 'gurte': gurte, 'urteil': urteil
-        }
-        
-        # PDF generieren
-        pdf = AuditPDF()
+if submit:
+    if not kennzeichen or not fahrer:
+        st.warning("Bitte Kennzeichen und Fahrer angeben!")
+    else:
+        # PDF Erstellung
+        pdf = FPDF()
         pdf.add_page()
-        pdf.chapter_title("1. STAMMDATEN")
-        for k, v in list(daten.items())[:4]: pdf.audit_line(k.capitalize(), v)
-        pdf.chapter_title("2. TECHNIK & SICHERHEIT")
-        for k, v in list(daten.items())[4:8]: pdf.audit_line(k.capitalize(), v)
-        pdf.chapter_title("3. BEMERKUNG")
-        pdf.multi_cell(0, 10, bemerkung)
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(200, 10, "LKW-Audit Protokoll - Firma Adler", ln=True, align='C')
+        pdf.ln(10)
         
-        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, f"Datum: {datum}", ln=True)
+        pdf.cell(200, 10, f"Kennzeichen: {kennzeichen}", ln=True)
+        pdf.cell(200, 10, f"Fahrer: {fahrer}", ln=True)
+        pdf.ln(5)
         
-        # Senden
-        try:
-            sende_mail_mit_pdf(pdf_bytes, urteil, lkw_kz)
-            st.success("Audit erfolgreich gesendet! 🦅")
+        pdf.cell(200, 10, f"Beleuchtung: {'OK' if licht else 'Mangelhaft'}", ln=True)
+        pdf.cell(200, 10, f"Reifen: {'OK' if reifen else 'Mangelhaft'}", ln=True)
+        pdf.cell(200, 10, f"Bremsen: {'OK' if bremsen else 'Mangelhaft'}", ln=True)
+        pdf.cell(200, 10, f"Ladungssicherung: {'OK' if ladungs else 'Mangelhaft'}", ln=True)
+        pdf.ln(5)
+        pdf.multi_cell(0, 10, f"Bemerkungen: {bemerkung}")
+        
+        filename = f"Audit_{kennzeichen}_{datum}.pdf"
+        pdf.output(filename)
+        
+        if send_email(filename, f"LKW Audit - {kennzeichen}"):
+            st.success(f"Audit erfolgreich gesendet an {EMPFAENGER_EMAIL}!")
             st.balloons()
-        except Exception as e:
-            st.error(f"Fehler: {e}")
-
-
