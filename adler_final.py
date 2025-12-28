@@ -1,4 +1,5 @@
 import streamlit as st
+st.set_page_config(page_title="Adler Audit", page_icon="🦅", layout="centered")
 from fpdf import FPDF
 from datetime import datetime
 import smtplib
@@ -115,4 +116,5 @@ if st.button("Audit finalisieren & Senden"):
             st.balloons()
         except Exception as e:
             st.error(f"Fehler: {e}")
+
 
