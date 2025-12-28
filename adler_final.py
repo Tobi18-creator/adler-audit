@@ -30,7 +30,7 @@ class AuditPDF(FPDF):
 # --- MAIL FUNKTION ---
 def sende_mail_mit_pdf(pdf_content, status_urteil, objekt_name):
     absender = "t.adler.1991@web.de"
-    passwort = "Sexspielzeug1" # <--- BITTE EINTRAGEN
+    passwort = "mein_web_passwort" # <--- BITTE EINTRAGEN
     
     msg = EmailMessage()
     msg['Subject'] = f"Audit-Bericht: {status_urteil} - {objekt_name}"
@@ -115,3 +115,4 @@ if st.button("Audit finalisieren & Senden"):
             st.balloons()
         except Exception as e:
             st.error(f"Fehler: {e}")
+
